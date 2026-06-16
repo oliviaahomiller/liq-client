@@ -108,59 +108,35 @@ def send_control(control_id: str, value, subsystem: str = "liquefaction") -> boo
         return False
 
 
-def check_alerts(sensors: dict):
-    """Liquefaction alerts. Returns (has_warning, has_error). Does not touch the
-    LEDs — main() aggregates flags across subsystems and drives them once."""
-    has_warning = False
-    has_error   = False
-
-    if sensors.get("error_condition"):
-        print(f"[ALERT] error_condition set — fault_code={sensors.get('fault_code')}")
-        has_error = True
-    if sensors.get("base_controller_fault"):
-        print("[ALERT] base_controller_fault")
-        has_error = True
-
-    if sensors.get("liquid_level_low_warning"):
-        print("[ALERT] liquid_level_low_warning")
-        has_warning = True
-    if sensors.get("o2_cutoff_active"):
-        print(f"[ALERT] O2 cutoff active — o2_ppm={sensors.get('o2_ppm')}")
-        has_warning = True
-    if sensors.get("loop_slow"):
-        print(f"[ALERT] firmware loop slow — loop_duration_ms={sensors.get('loop_duration_ms')}")
-        has_warning = True
-
-    return has_warning, has_error
+def decode_bits(mask: int) -> list:
+    """List the set bit indices in mask (bit 0 = LSB)."""
+    return [i for i in range(32) if mask & (1 << i)]
 
 
-def check_bop_alerts(sensors: dict):
-    """BoP alerts, mirroring check_alerts(). Returns (has_warning, has_error).
+def check_alerts(sensors: dict, label: str = "LIQ"):
+    """Mirror the firmware's OWN warning/error classification — no hardcoded list.
 
-    NOTE: BopSensors (control/src/models/telemetry.rs) does not currently expose
-    any of these fault/warning fields, so these checks never fire today — every
-    .get() returns None. They are wired up in advance: the moment the firmware /
-    Rust model starts publishing these flags, this will poll them and the shared
-    LEDs will respond, exactly like liquefaction. Rename the keys below to match
-    whatever fields BopSensors eventually gains."""
-    has_warning = False
-    has_error   = False
+    The PLC packs every condition into two bitmask words and decides for itself
+    which bits are warnings vs errors:
+        active_warnings — conditions the firmware calls warnings (live each tick)
+        active_errors   — conditions it calls errors (latched until ERROR → OFF)
+    We just read those two words, so any condition the firmware adds later is
+    covered with no change here. Bit meanings are documented in the GUI's
+    constants/liqConditions.ts (HAZOP E-numbers). A subsystem that does not
+    publish these words yet reads as 0, so it simply never alerts.
 
-    if sensors.get("error_condition"):
-        print(f"[BOP ALERT] error_condition set — fault_code={sensors.get('fault_code')}")
-        has_error = True
-    if sensors.get("base_controller_fault"):
-        print("[BOP ALERT] base_controller_fault")
-        has_error = True
+    Returns (has_warning, has_error). Does not touch the LEDs — main() aggregates
+    across subsystems and drives them once.
+    """
+    warnings = sensors.get("active_warnings") or 0
+    errors   = sensors.get("active_errors") or 0
 
-    if sensors.get("warning_condition"):
-        print("[BOP ALERT] warning_condition")
-        has_warning = True
-    if sensors.get("loop_slow"):
-        print(f"[BOP ALERT] firmware loop slow — loop_duration_ms={sensors.get('loop_duration_ms')}")
-        has_warning = True
+    if warnings:
+        print(f"[{label} WARN]  active_warnings=0x{warnings:04x} bits={decode_bits(warnings)}")
+    if errors:
+        print(f"[{label} ERROR] active_errors=0x{errors:04x} bits={decode_bits(errors)}")
 
-    return has_warning, has_error
+    return warnings != 0, errors != 0
 
 
 def check_divergence(controls: dict, sensors: dict) -> bool:
@@ -203,7 +179,7 @@ def process_bop_sample(sample: dict):
     BoP exposes no *_actual feedback fields."""
     sensors = sample["bop"]["sensors"]
 
-    has_warning, has_error = check_bop_alerts(sensors)
+    has_warning, has_error = check_alerts(sensors, label="BOP")
 
     # Log a few key readings
     print(
