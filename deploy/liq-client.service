@@ -1,0 +1,19 @@
+[Unit]
+Description=Liquefaction + BoP telemetry client (LED alarm signal)
+# Wait for the network so the backends are reachable at boot.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=provocative
+WorkingDirectory=/home/provocative/liq-client
+# Secrets (AUTH_TOKEN, optional *_BASE_URL overrides) live here, NOT in git.
+EnvironmentFile=/etc/liq-client.env
+ExecStart=/usr/bin/python3 /home/provocative/liq-client/liq_client.py
+# Restart on crash or backend hiccup; wait 5s between attempts.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
