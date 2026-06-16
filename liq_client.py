@@ -267,7 +267,7 @@ def main():
 
         # Drive the shared LEDs once from the combined state so neither
         # subsystem clobbers the other's alert.
-        led_warning.off() if has_warning else led_warning.on()
+        led_warning.on() if has_warning else led_warning.off()
         led_error.on()   if has_error   else led_error.off()
 
         time.sleep(POLL_INTERVAL_S)
