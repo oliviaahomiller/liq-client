@@ -195,6 +195,8 @@ def process_liquefaction_sample(sample: dict):
         f"vent_flow={sensors.get('column_vent_flow_rate_slpm')} slpm"
     )
 
+    return has_warning, has_error
+
 
 def process_bop_sample(sample: dict):
     """Returns (has_warning, has_error) for this subsystem. No divergence check —
